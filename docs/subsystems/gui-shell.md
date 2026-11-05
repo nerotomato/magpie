@@ -1,11 +1,16 @@
 # GUI app shell
 
-The Routing page shows the selected request's classifier above the route
-stage when the request records a classification. It names the classifier
+The Routing page names a request's System One classifier in its request row,
+and shows the selected request's classifier above the route stage when the
+record identifies that protocol. It names the classifier
 and its answer, and distinguishes that answer from the intent routing used
-when they differ. Requests that only retain a turn's earlier decision do
-not claim a new classification. The same explanation appears in the request
-steps. See `classWhy` and `header` in
+when they differ. The compact summary truncates long intent names, with the
+full explanation in its tooltip and in the request steps. A recorded
+low-confidence reason names the threshold and previous intent; older
+records with no reason do not infer one. Requests that only retain a turn's
+earlier decision do not claim a new classification. Older records without a
+protocol and chat classifiers keep their original display. See `classSummary`,
+`classWhy` and `header` in
 [`plugins/routing/client.js`](../../internal/gui/assets/plugins/routing/client.js).
 
 The desktop app has a tray (menu bar) icon whose click drops a compact

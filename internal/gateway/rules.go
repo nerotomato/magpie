@@ -89,14 +89,17 @@ type Classified struct {
 	// with (0 for none), or the choice a decision model named, its own
 	// "none of these" included — kept when no intent came of it, so
 	// "none" is told from an answer no rule could take (#4598)
-	Said   string  `json:"said,omitempty"`
-	After  string  `json:"after,omitempty"`  // what it said the turn before was, which it was told
-	Effort string  `json:"effort,omitempty"` // the reasoning it said the turn wants
-	Score  float64 `json:"score,omitempty"`  // how hard it took the turn to be, 0 (low) to 3 (xhigh)
-	Sure   float64 `json:"sure,omitempty"`   // how confident it was of the intent, 0 to 1
-	Cached bool    `json:"cached,omitempty"` // said before, for the same message
-	Ms     int     `json:"ms,omitempty"`     // how long asking it took
-	Error  string  `json:"error,omitempty"`  // why it couldn't say: no intent matches then, unless Fallback
+	Said      string  `json:"said,omitempty"`
+	After     string  `json:"after,omitempty"` // what it said the turn before was, which it was told
+	Reason    string  `json:"reason,omitempty"`
+	Protocol  string  `json:"protocol,omitempty"`
+	Threshold float64 `json:"threshold,omitempty"`
+	Effort    string  `json:"effort,omitempty"` // the reasoning it said the turn wants
+	Score     float64 `json:"score,omitempty"`  // how hard it took the turn to be, 0 (low) to 3 (xhigh)
+	Sure      float64 `json:"sure,omitempty"`   // how confident it was of the intent, 0 to 1
+	Cached    bool    `json:"cached,omitempty"` // said before, for the same message
+	Ms        int     `json:"ms,omitempty"`     // how long asking it took
+	Error     string  `json:"error,omitempty"`  // why it couldn't say: no intent matches then, unless Fallback
 	// Above: the reasoning a group above this one picked for the turn, so
 	// this one's classifier wasn't asked for it (#4358): the turn reasons
 	// at that, not as the agent asked
@@ -338,6 +341,11 @@ func ruleFor(key string, g provider.Group, ms []provider.Member, req *Request, a
 			v, cached, err := classify(ask, g.Classifier, intents, prev, effort, text)
 			classifiedFor(g.ID, g.Classifier, err)
 			c.Intent, c.Said, c.Cached, c.Ms = v.Intent, v.Said, cached, int(time.Since(t0).Milliseconds())
+			c.Reason = v.Reason
+			c.Protocol = v.Protocol
+			if c.Reason == "low_confidence_previous" {
+				c.Threshold = jevSure
+			}
 			if effort {
 				c.Effort, c.Score = v.Effort, v.Score
 			}

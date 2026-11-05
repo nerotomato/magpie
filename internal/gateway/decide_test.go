@@ -616,6 +616,42 @@ func TestJevTornLevel(t *testing.T) {
 	}
 }
 
+func TestJevLowConfidenceReasonInRoute(t *testing.T) {
+	s, _, _, j := jevved(t, "",
+		provider.Rule{Use: "b/big", Intent: "complex"},
+		provider.Rule{Use: "a/small", Intent: "simple"},
+	)
+	j.mu.Lock()
+	j.levels, j.level, j.sure = 0.9, "complex", 0.9
+	j.mu.Unlock()
+	_, first := postOK(t, s, "low-confidence", chat("design the system", nil, 0, ""))
+	if first.Rule.Classified.Intent != "complex" || first.Rule.Classified.Reason != "" || first.Rule.Classified.Protocol != "systemone" {
+		t.Fatalf("first: %+v", first.Rule.Classified)
+	}
+	j.mu.Lock()
+	j.level, j.sure = "simple", 0.279
+	j.mu.Unlock()
+	_, second := postOK(t, s, "low-confidence", chat("design the system", []string{"explain it"}, 0, ""))
+	c := second.Rule.Classified
+	if c.Said != "simple" || c.Intent != "complex" || c.After != "complex" || c.Protocol != "systemone" || c.Reason != "low_confidence_previous" || c.Threshold != 0.4 {
+		t.Fatalf("low confidence: %+v", c)
+	}
+	encoded, err := json.Marshal(c)
+	if err != nil || !strings.Contains(string(encoded), `"protocol":"systemone"`) || !strings.Contains(string(encoded), `"reason":"low_confidence_previous"`) || !strings.Contains(string(encoded), `"threshold":0.4`) {
+		t.Fatalf("serialized: %s %v", encoded, err)
+	}
+	j.mu.Lock()
+	j.level, j.sure = "simple", 0.4
+	j.mu.Unlock()
+	_, third := postOK(t, s, "low-confidence", chat("design the system", []string{"explain it", "now simplify it"}, 0, ""))
+	if c = third.Rule.Classified; c.Intent != "simple" || c.Reason != "" || c.Threshold != 0 {
+		t.Fatalf("at threshold: %+v", c)
+	}
+	if calls := j.n(); calls != 4 {
+		t.Fatalf("classifier calls: %d, want one levels query and one per turn", calls)
+	}
+}
+
 // jevAt is ruled's group with the Jev a decision API at decide serves as
 // its classifier.
 func jevAt(t *testing.T, decide, classifier string, rules ...provider.Rule) *Server {

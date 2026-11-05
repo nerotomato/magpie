@@ -73,10 +73,12 @@ type verdict struct {
 	// choice a decision model named — kept even when no intent came of
 	// it, so the trace tells "said none" from an answer the rules
 	// couldn't take (#4598)
-	Said   string
-	Effort string  // the reasoning the turn wants; "" when not asked
-	Score  float64 // how hard the classifier took the turn to be, from 0 (low) to 3 (xhigh)
-	Sure   float64 // how confident Jev was of the intent, from 0 to 1
+	Said     string
+	Reason   string
+	Protocol string
+	Effort   string  // the reasoning the turn wants; "" when not asked
+	Score    float64 // how hard the classifier took the turn to be, from 0 (low) to 3 (xhigh)
+	Sure     float64 // how confident Jev was of the intent, from 0 to 1
 }
 
 var classified = struct {

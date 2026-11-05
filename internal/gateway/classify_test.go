@@ -203,6 +203,9 @@ func TestIntentChoosesAmongRules(t *testing.T) {
 	if got := r.Rule.Classified.Intents; len(got) != 2 || got[0] != "a quick question" || got[1] != "Planning a large change" {
 		t.Fatalf("intents %q", got)
 	}
+	if r.Rule.Classified.Protocol != "" || r.Rule.Classified.Reason != "" {
+		t.Fatalf("chat classifier marked as System One: %+v", r.Rule.Classified)
+	}
 	if strings.Contains(c.last(), "reviewing code") || strings.Count(strings.ToLower(c.last()), "planning a large change") != 1 {
 		t.Fatalf("asked %s", c.last())
 	}

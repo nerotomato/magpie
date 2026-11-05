@@ -117,6 +117,11 @@ for (const engine of engines) for (const lang of ["en", "zh"]) {
     await page.waitForFunction((was) => (document.querySelector(".rt-req .said")?.textContent || "") !== was, before);
     assert.equal(await page.evaluate(() => document.querySelector(".rt-req").className.includes("wait")), false, "the answered request's row still reads as under way");
 
+    const classified = { ...done, seq: 46, rule: { turn: 1, classified: { by: "laya-mps/laya-multilingual", protocol: "systemone", intents: ["easy", "hard"], said: "easy", intent: "easy", ms: 120 } } };
+    next.push(classified);
+    await page.waitForFunction(() => document.querySelector(".rt-req .rt-classifier-badge")?.textContent.includes("laya-mps/laya-multilingual"));
+    assert.equal(await page.locator(".rt-req .rt-classifier-badge").count(), 1);
+
     // a new language: every row is worked out again, in it
     const title = () => page.evaluate(() => document.querySelector(".rt-req .rt-metric.tokens")?.title || "");
     const was = await title();

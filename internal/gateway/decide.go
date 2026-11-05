@@ -252,7 +252,7 @@ func readJev(b []byte, intents []string, levels bool, prev before) (verdict, err
 	if err := decodeJSON(b, &out); err != nil {
 		return verdict{}, answerError{fmt.Errorf("not a System One answer")}
 	}
-	var v verdict
+	v := verdict{Protocol: "systemone"}
 	if a, ok := out.Answers["intent"]; ok && len(intents) > 0 && !levels {
 		v.Sure = sureOf(a.Confidence, a.Probabilities)
 		v.Said = a.Choice // as it said it, no intent come of it or not (#4598)
@@ -269,6 +269,9 @@ func readJev(b []byte, intents []string, levels bool, prev before) (verdict, err
 		v.Said = a.Choice
 		v.Intent = intentNamed(intents, a.Choice)
 		if was := intentNamed(intents, prev.Intent); v.Sure < jevSure && was != "" {
+			if v.Intent != was {
+				v.Reason = "low_confidence_previous"
+			}
 			v.Intent = was
 		}
 	}

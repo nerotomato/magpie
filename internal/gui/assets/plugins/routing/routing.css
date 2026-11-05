@@ -359,6 +359,7 @@
 .rt-steps li .rt-named > .ic { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
 /* in a narrow row the model keeps its room first: the tag gives way, to an ellipsis */
 :is(.rt-req, .rt-probe) .asked .kind { flex: 0 100 auto; min-width: 3.2em; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+:is(.rt-req, .rt-probe) .asked .rt-classifier-badge { flex: 0 1 auto; min-width: 4em; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); }
 :is(.rt-req, .rt-probe) .asked.kinded .m { flex: none; max-width: calc(100% - 3.2em - 40px); }
 :is(.rt-req, .rt-probe) .to .swap, .rt-steps li .swap { font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 5px; color: var(--amber); background: var(--amber-soft); white-space: nowrap; }
 :is(.rt-req, .rt-probe) .to .swap { flex: none; max-width: 70%; }

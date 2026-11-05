@@ -34,9 +34,13 @@ const routeOf = (how) => ({
   tries: how === "answered" ? [{ id: "b", model: "opus", start: new Date(now - 2000).toISOString(), done: true, ms: 800, status: 200 }] : [],
   rule: how === "tokens"
     ? { n: 1, use: "b/opus", when: ["tokens ≥ 8000"], turn: 3, tokens: 9000 }
+    : how === "held"
+    ? { n: 1, use: "b/opus", when: ['intent "complex"'], held: true, turn: 3, tokens: 9000 }
     : { n: 1, use: "b/opus", when: ['intent "complex"'], turn: 3, tokens: 9000,
-      classified: how === "changed"
-        ? { by: "laya-mps/laya-multilingual", intents: ["easy", "complex"], said: "easy", intent: "complex", after: "complex", sure: 0.279, ms: 763 }
+      classified: ["changed", "changed-old", "changed-near", "legacy"].includes(how)
+        ? { by: "laya-mps/laya-multilingual", intents: ["easy", "complex"], said: "easy", intent: "complex", after: "complex", sure: how === "changed-near" ? 0.3999 : 0.279, ms: 763, ...(how !== "legacy" ? { protocol: "systemone" } : {}), ...(["changed", "changed-near"].includes(how) ? { reason: "low_confidence_previous", threshold: 0.4 } : {}) }
+        : how === "chat"
+        ? { by: "codex/gpt-6-luna", intents: ["easy", "complex"], said: "2", intent: "complex", ms: 763 }
         : { by: "c/cls", intents: ["complex"], intent: "complex", ms: 300 } },
 });
 
@@ -122,6 +126,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const s = await said(page);
       assert(/\d/.test(s.b) && !s.b.includes(w.picked), JSON.stringify(s));
       assert.equal(await page.locator(".rt-classification").isVisible(), false);
+      assert.equal(await page.locator(".rt-req .rt-classifier-badge").count(), 0);
       assert.deepEqual(errors, []);
     });
     test(`${engine} ${lang}: the routing stage shows the classifier's answer and the intent used`, async (t) => {
@@ -132,6 +137,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert(text.includes("laya-mps/laya-multilingual"), text);
       assert(text.includes("easy") && text.includes("complex"), text);
       assert(text.includes("763"), text);
+      assert(text.includes("28%") && text.includes("40%"), text);
+      const tag = page.locator(".rt-req .rt-classifier-badge").first();
+      await tag.waitFor({ state: "visible" });
+      assert((await tag.textContent()).includes("laya-mps/laya-multilingual"));
+      const details = await tag.getAttribute("title");
+      assert(details.includes("easy") && details.includes("complex") && details.includes("40%"), details);
       await page.waitForFunction(() => {
         const text = document.querySelector(".rt-steps")?.textContent || "";
         return text.includes("easy") && text.includes("complex");
@@ -139,6 +150,44 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const story = await page.locator(".rt-steps").textContent();
       assert(story.includes("easy") && story.includes("complex"), story);
       assert((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0);
+      assert.deepEqual(errors, []);
+    });
+    test(`${engine} ${lang}: records without a reason do not guess one`, async (t) => {
+      const { page, errors } = await open(t, engine, lang, 390, "changed-old");
+      const summary = page.locator(".rt-classification");
+      await summary.waitFor({ state: "visible" });
+      const text = await summary.textContent();
+      assert(text.includes("easy") && text.includes("complex"), text);
+      assert(!text.includes("40%"), text);
+      assert.deepEqual(errors, []);
+    });
+    for (const how of ["chat", "legacy"]) {
+      test(`${engine} ${lang}: ${how} keeps the original routing display`, async (t) => {
+        const { page, errors } = await open(t, engine, lang, 390, how);
+        await page.locator(".rt-req").first().waitFor();
+        assert.equal(await page.locator(".rt-classification").isVisible(), false);
+        assert.equal(await page.locator(".rt-req .rt-classifier-badge").count(), 0);
+        const model = how === "chat" ? "codex/gpt-6-luna" : "laya-mps/laya-multilingual";
+        await page.waitForFunction((name) => document.querySelector(".rt-steps")?.textContent.includes(name), model);
+        const detail = await page.locator(".rt-steps li").filter({ hasText: model }).textContent();
+        assert(detail.includes("complex"), detail);
+        if (how === "chat") assert(!/“2”|「2」|„2“/.test(detail), detail);
+        assert.deepEqual(errors, []);
+      });
+    }
+    test(`${engine} ${lang}: rounding does not claim equal confidence is below the threshold`, async (t) => {
+      const { page, errors } = await open(t, engine, lang, 390, "changed-near");
+      const summary = page.locator(".rt-classification");
+      await summary.waitFor({ state: "visible" });
+      const text = await summary.textContent();
+      assert.equal((text.match(/40%/g) || []).length, 1, text);
+      assert.deepEqual(errors, []);
+    });
+    test(`${engine} ${lang}: a held rule does not show a new classification`, async (t) => {
+      const { page, errors } = await open(t, engine, lang, 390, "held");
+      await page.locator(".rt-req").first().waitFor();
+      assert.equal(await page.locator(".rt-classification").isVisible(), false);
+      assert.equal(await page.locator(".rt-req .rt-classifier-badge").count(), 0);
       assert.deepEqual(errors, []);
     });
   }

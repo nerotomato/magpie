@@ -1138,6 +1138,43 @@ function routingPage(part) {
     }
     return out;
   }
+  function classReason(c) {
+    if (c.reason !== "low_confidence_previous") return "";
+    if (!Number.isFinite(c.threshold)) return t("Confidence was low; the previous intent was kept.");
+    const sure = Math.round((c.sure ?? 0) * 100), threshold = Math.round(c.threshold * 100);
+    if (sure >= threshold) return t("Confidence is below {threshold}; the previous intent was kept.", { threshold: threshold + "%" });
+    return t("Confidence {sure} is below {threshold}; the previous intent was kept.", {
+      sure: sure + "%",
+      threshold: threshold + "%",
+    });
+  }
+  function classSummary(x) {
+    const c = x?.classified;
+    if (c?.protocol !== "systemone" || !c.intents?.length) return "";
+    if (c.error || !c.intent) return classWhy(x);
+    const short = (value) => {
+      const chars = Array.from(value);
+      return chars.length > 56 ? chars.slice(0, 55).join("") + "…" : value;
+    };
+    const by = c.by || t("the classifier");
+    const when = c.cached ? t("said before, for the same message") : t("in {ms}", { ms: took(c.ms) });
+    const said = c.said && c.said !== c.intent
+      ? t("{by} answered “{said}”; routing used “{intent}” ({took}).", { by, said: short(c.said), intent: short(c.intent), took: when })
+      : t("{by}: “{intent}” ({took}).", { by, intent: short(c.intent), took: when });
+    const reason = classReason(c);
+    return reason ? `${said} ${reason}` : said;
+  }
+  const routeClassRules = new WeakMap();
+  const noClassRules = [];
+  function classRules(r) {
+    if (r.rule?.classified?.protocol !== "systemone" && !r.nested?.length) return noClassRules;
+    let rules = routeClassRules.get(r);
+    if (rules) return rules;
+    rules = [r.rule, ...(r.nested || []).map((n) => n.rule)]
+      .filter((x) => x?.classified?.protocol === "systemone" && x.classified.by && x.classified.intents?.length);
+    routeClassRules.set(r, rules);
+    return rules;
+  }
   // classWhy tells what a group's classifier said of the turn's message,
   // for its rule step x
   function classWhy(x) {
@@ -1160,7 +1197,7 @@ function routingPage(part) {
     const toldEffort = c.afterEffort ? " " + t("It was told turn {prev} reasoned at {level}, which a message that only carries on from it needs too.", { prev: r.rule.turn - 1, level: c.afterEffort }) : "";
     const effort = c.effort ? t("{by} rated turn {turn} {score} of 3, so it picks {level} reasoning for the turn — each model gets the level it has nearest.", { by, turn: r.rule.turn, score: (c.score || 0).toFixed(1), level: c.effort }) + toldEffort : "";
     if (!c.intents?.length) return effort ? `${effort} (${when})` : null;
-    const sure = c.sure != null ? t(", {n} sure", { n: Math.round(c.sure * 100) + "%" }) : "";
+    const sure = c.sure ? t(", {n} sure", { n: Math.round(c.sure * 100) + "%" }) : "";
     // c.said is the answer as it was said (#4598): a chat model's 0 is
     // none, but a decision model can name a choice no intent came of (a
     // kind under the sure-enough bar, its own "none of these")
@@ -1169,10 +1206,11 @@ function routingPage(part) {
       ? answered
         ? t("{by} was asked which of {kinds} turn {turn} is, and answered “{said}”, which is no rule's intent ({took}).", { by, kinds, turn: r.rule.turn, said: answered, took: when + sure })
         : t("{by} was asked which of {kinds} turn {turn} is, and said none ({took}).", { by, kinds, turn: r.rule.turn, took: when + sure })
-      : c.said && c.said !== c.intent
+      : c.protocol === "systemone" && c.said && c.said !== c.intent
         ? t("{by} answered “{said}”; routing used “{intent}” ({took}).", { by, said: c.said, intent: c.intent, took: when + sure })
         : t("{by} was asked which of {kinds} turn {turn} is, and said “{intent}” ({took}).", { by, kinds, turn: r.rule.turn, intent: c.intent, took: when + sure })) + told;
-    return effort ? `${said} ${effort}` : above ? `${said} ${above}` : said;
+    const reason = classReason(c);
+    return [said, reason, effort || above].filter(Boolean).join(" ");
   }
   // intentOf is the intent a rule's condition asks for, as the gateway
   // writes it (intent "…"); undefined for another condition
@@ -2588,6 +2626,7 @@ function routingPage(part) {
   // changed it); a provider with only one account or key on has nothing
   // to route, and says so instead.
   let headOf = null; // what the head tells of, told again once the pools are in
+  let classRoute = null, classLang = "";
   function header(r, many) {
     headOf = [r, many];
     const f = r.order.find((x) => !x.fallback) || r.order[0];
@@ -2615,10 +2654,16 @@ function routingPage(part) {
     if (what.childElementCount !== 2 || what.firstChild.textContent !== name || what.lastChild.textContent !== tail) what.replaceChildren(el("b", "", name), el("span", "", tail));
     // keys that read their own windows are weighed as accounts are
     setText(mode, none ? noneWhy(r) : lone ? t(LONE) : g && routing === "order" ? t(GROUP_ORDER) : g && routing === "weight" ? t(GROUP_WEIGHT) : t(!routing && f?.kind === "key" && !r.order.some((x) => x.known) && !g ? KEYS_SMART : m[1]));
-    const nested = (r.nested || []).find((n) => classWhy(n.rule));
-    const classified = classWhy(r.rule) || (nested && t("In {group}: {text}", { group: nested.name || nested.group, text: classWhy(nested.rule) }));
-    classification.hidden = !classified;
-    setText(classification, classified || "");
+    if (classRoute !== r || classLang !== document.documentElement.lang) {
+      classRoute = r;
+      classLang = document.documentElement.lang;
+      const own = classSummary(r.rule);
+      const nested = !own && (r.nested || []).find((n) => classSummary(n.rule));
+      const classified = own || (nested && t("In {group}: {text}", { group: nested.name || nested.group, text: classSummary(nested.rule) }));
+      classification.hidden = !classified;
+      setText(classification, classified || "");
+      classification.title = own ? classWhy(r.rule) || "" : nested ? classWhy(nested.rule) || "" : "";
+    }
     holdMode(r);
   }
   // holdMode keeps the line under the head, live, as tall as the last
@@ -3973,7 +4018,7 @@ function routingPage(part) {
     // all the row says, and its titles
     const title = reqTitle(r, how, tr);
     const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, name, ag?.icon, r.model, r.provider, tagKind(r), r.effort,
-      tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, cost]);
+      tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, classRules(r), meta, metrics, cost]);
     s = { lang, shows, name, icon, cost, said, how, tr, ag, meta, metrics, title, sig };
     rowSaid.set(r, s);
     return s;
@@ -4121,7 +4166,7 @@ function routingPage(part) {
     const was = probeShapes.get(r);
     if (was && was.key === key) return was.s;
     const how = outcome(r)[1], meta = r.tries.length > 1 ? t("{n} tries", { n: r.tries.length }) : "";
-    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([r.model, tagKind(r) ? kindName(tagKind(r)) : ""]),
+    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([r.model, tagKind(r) ? kindName(tagKind(r)) : "", classRules(r).map((x) => x.classified.by)]),
       "m" + digits(JSON.stringify([meta, requestMetrics(r, how).map((m) => [m[0], m[2]])]))];
     probeShapes.set(r, { key, s });
     return s;
@@ -4272,6 +4317,11 @@ function routingPage(part) {
     sw.style.setProperty("--agent", hueOf(r.agent));
     asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
     const tags = rowTags(r);
+    for (const rule of classRules(r)) {
+      const tag = el("span", "rt-classifier-badge", t("Intent: {by}", { by: rule.classified.by }));
+      tag.title = classWhy(rule) || "";
+      tags.push(tag);
+    }
     if (tags.length) { asked.classList.add("kinded"); asked.append(...tags); }
     // the reasoning the model was sent at — the turn's pick, or the
     // agent's fitted to the model's levels — after the one the agent
@@ -5251,6 +5301,7 @@ function routingPage(part) {
     what.replaceChildren(el("b", "", t(purpose.length || day ? "No requests match these filters." : "Waiting for a request")));
     mode.textContent = t("Send one from any agent routed through magpie and it plays here as it happens: who routing put first and why, each try, and what each answered.");
     classification.hidden = true;
+    classRoute = null;
     for (const a of agents.values()) a.wire.remove();
     agents.clear();
     const a = agentNode("");
