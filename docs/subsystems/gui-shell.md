@@ -1,5 +1,13 @@
 # GUI app shell
 
+The Routing page shows the selected request's classifier above the route
+stage when the request records a classification. It names the classifier
+and its answer, and distinguishes that answer from the intent routing used
+when they differ. Requests that only retain a turn's earlier decision do
+not claim a new classification. The same explanation appears in the request
+steps. See `classWhy` and `header` in
+[`plugins/routing/client.js`](../../internal/gui/assets/plugins/routing/client.js).
+
 The desktop app has a tray (menu bar) icon whose click drops a compact
 panel, and a regular window. Both show one small web UI served from
 embedded assets. The page talks to Go over a JSON API on the same handler,

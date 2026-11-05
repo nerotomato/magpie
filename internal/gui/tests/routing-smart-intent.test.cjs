@@ -35,7 +35,9 @@ const routeOf = (how) => ({
   rule: how === "tokens"
     ? { n: 1, use: "b/opus", when: ["tokens ≥ 8000"], turn: 3, tokens: 9000 }
     : { n: 1, use: "b/opus", when: ['intent "complex"'], turn: 3, tokens: 9000,
-      classified: { by: "c/cls", intents: ["complex"], intent: "complex", ms: 300 } },
+      classified: how === "changed"
+        ? { by: "laya-mps/laya-multilingual", intents: ["easy", "complex"], said: "easy", intent: "complex", after: "complex", sure: 0.279, ms: 763 }
+        : { by: "c/cls", intents: ["complex"], intent: "complex", ms: 300 } },
 });
 
 const words = {
@@ -119,6 +121,24 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await until(page, () => [...document.querySelectorAll(".rt-accts li")].filter((li) => /\d/.test(li.querySelector(":scope > em")?.textContent || "")).length >= 2);
       const s = await said(page);
       assert(/\d/.test(s.b) && !s.b.includes(w.picked), JSON.stringify(s));
+      assert.equal(await page.locator(".rt-classification").isVisible(), false);
+      assert.deepEqual(errors, []);
+    });
+    test(`${engine} ${lang}: the routing stage shows the classifier's answer and the intent used`, async (t) => {
+      const { page, errors } = await open(t, engine, lang, 390, "changed");
+      const summary = page.locator(".rt-classification");
+      await summary.waitFor({ state: "visible" });
+      const text = await summary.textContent();
+      assert(text.includes("laya-mps/laya-multilingual"), text);
+      assert(text.includes("easy") && text.includes("complex"), text);
+      assert(text.includes("763"), text);
+      await page.waitForFunction(() => {
+        const text = document.querySelector(".rt-steps")?.textContent || "";
+        return text.includes("easy") && text.includes("complex");
+      });
+      const story = await page.locator(".rt-steps").textContent();
+      assert(story.includes("easy") && story.includes("complex"), story);
+      assert((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0);
       assert.deepEqual(errors, []);
     });
   }
